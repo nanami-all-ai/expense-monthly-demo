@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>経費・外注費の月次まとめ（1画面デモ）</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2430;--mute:#5d6b7c;--line:#d9dee5;--acc:#1f3a5f;--ok:#0f7b4b;--warn:#a5540b;--bad:#b3261e;--badbg:#fdeceb}
+@media (prefers-color-scheme:dark){:root{--bg:#12161c;--card:#1b222b;--ink:#e8ecf1;--mute:#9aa7b6;--line:#2c3644;--acc:#7fb0ee;--ok:#5cd19a;--warn:#f0a35c;--bad:#ff9b92;--badbg:#3a1f1d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.7 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+main{max-width:900px;margin:0 auto;padding:20px 16px 56px}
+h1{font-size:1.25rem;margin:.2em 0 .1em}
+h2{font-size:1rem;margin:0 0 6px}
+.sub{color:var(--mute);font-size:.9rem;margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
+label{display:block;font-weight:600;margin:10px 0 4px;font-size:.92rem}
+.hint{font-weight:400;color:var(--mute);font-size:.82rem}
+input,select,textarea{width:100%;padding:8px 10px;font:inherit;font-size:.95rem;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+textarea{min-height:92px;resize:vertical}
+.item{display:grid;grid-template-columns:1.1fr 1.5fr 1fr 1fr .8fr 1.4fr auto;gap:6px;align-items:center;margin:6px 0}
+.head{font-size:.75rem;color:var(--mute)}
+.item.bad input,.item.bad select{border-color:var(--bad);background:var(--badbg)}
+.rerr{grid-column:1/-1;font-size:.82rem;color:var(--bad);margin:-2px 0 0}
+.item.dup input,.item.dup select{border-color:var(--warn)}
+.item.dup .rerr{color:var(--warn)}
+.rerr:empty{display:none}
+button{font:inherit;padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button.pri{background:var(--acc);color:var(--card);border-color:var(--acc);font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th{font-size:.78rem;color:var(--mute);text-align:left;font-weight:600;border-bottom:1px solid var(--line);padding:4px 6px}
+td{padding:6px;border-bottom:1px solid var(--line)}
+th.n,td.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.sub td{font-weight:700;color:var(--acc)}
+.tbl{overflow-x:auto}
+.note{color:var(--mute);font-size:.82rem}
+.msg{font-size:.9rem;min-height:1.2em}
+.msg.ng{color:var(--bad)}
+.stat{font-size:.92rem}
+.stat b.ng{color:var(--bad)}
+.stat b.wn{color:var(--warn)}
+.warn{color:var(--warn);font-size:.86rem}
+@media (max-width:700px){.item{grid-template-columns:1fr 1fr 1fr}.item .party,.item .memo{grid-column:1/-1}.head{display:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>経費・外注費の月次まとめ</h1>
+<p class="sub">取引を入れる（またはExcelの表を貼り付ける）と、月ごとの区分別合計、外注先ごとの合計、外注先ごとの振込予定額の一覧が出ます。</p>
+
+<div class="card">
+  <p class="note" style="margin-top:0"><b>数字は、入力どおりの集計です。</b>税務上の判断（経費にできるか、どの科目にするか、消費税の計算など）は、このツールでは行いません。税務上の判断は税理士に確認してください。<br>いま表示されているのは、架空のサンプルデータです。下のボタンで、サンプルを消して、ご自身のデータを入れられます。</p>
+  <div class="btns"><button type="button" id="clearSample" class="pri">サンプルを消して自分のデータを入れる</button></div>
+</div>
+
+<div class="card">
+  <h2>取引の入力</h2>
+  <div class="item head"><span>日付</span><span>相手先</span><span>区分</span><span>金額（円）</span><span>税込／税抜</span><span>メモ</span><span></span></div>
+  <div id="items"></div>
+  <div class="btns"><button type="button" id="add">＋ 行を追加</button></div>
+  <details>
+    <summary>Excelの表を貼り付けて取り込む</summary>
+    <label>列の順：日付・相手先・区分・金額・税込／税抜・メモ <span class="hint">（Excelから範囲をコピーして、そのまま貼れます。CSVも可。1行目が「日付」の見出し行なら読み飛ばします）</span></label>
+    <textarea id="paste" placeholder="2026/09/03&#9;架空タイル工業&#9;外注費&#9;120,000&#9;税込&#9;9月分の一部&#10;2026/09/05&#9;見本運送&#9;交通費&#9;3,300&#9;税込"></textarea>
+    <div class="btns"><button type="button" id="pasteGo">取り込む</button></div>
+    <div class="msg" id="pasteMsg"></div>
+  </details>
+  <p class="note"><b>入力の決まり：</b>日付は 2026-09-05 や 2026/9/5 の形（実在する日付）。区分は 材料費・外注費・交通費・消耗品費・その他 のいずれか。金額は、1円以上、10億円以下の円単位の整数（全角数字・3桁区切りのカンマ・「円」「¥」は読み取ります）。小数、0円、マイナスは、誤入力の可能性があるため取り込まず、赤く表示します。相手先の表記は、全角と半角、大文字と小文字、空白、丸数字と数字など、見た目が近い文字の違いは同じ相手先として合算します（「株式会社」と「(株)」のような言い換えは別の相手先になります）。</p>
+  <div class="stat" id="stat"></div>
+</div>
+
+<div class="card" id="results">
+  <h2>月ごとの区分別合計</h2>
+  <div class="tbl" id="tMonth"></div>
+</div>
+
+<div class="card">
+  <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:end">
+    <div style="flex:0 0 200px"><label style="margin-top:0" for="month">対象の月</label><select id="month"></select></div>
+  </div>
+  <h2 style="margin-top:14px">相手先別の合計（その月・全区分）</h2>
+  <div class="tbl" id="tParty"></div>
+  <h2 style="margin-top:14px">外注先ごとの振込予定額一覧（その月の外注費）</h2>
+  <div class="tbl" id="tPay"></div>
+  <div class="warn" id="payWarn"></div>
+  <div class="btns">
+    <button type="button" id="copyPay">振込予定額の表をコピー</button>
+    <button type="button" id="dlPay">振込予定額CSV</button>
+    <button type="button" id="dlParty">相手先別CSV（その月）</button>
+    <button type="button" id="dlCat">区分別CSV（全期間）</button>
+  </div>
+  <div class="msg" id="outMsg"></div>
+</div>
+
+<div class="card">
+  <h2>重複の候補</h2>
+  <p class="note" style="margin-top:0">相手先・日付・金額がすべて同じ行の組を、警告として並べます。集計には両方とも含めています。二重入力なら、どちらかの行を削除してください。</p>
+  <div id="tDup"></div>
+</div>
+
+<div class="card">
+  <p class="note" style="margin:0"><b>計算のルール：</b>集計は、円単位の整数の足し算だけです。端数処理（切り捨て・四捨五入）は発生しません。「税込で入力した額」「税抜で入力した額」は、入力の区分どおりに分けて足しただけで、消費税の計算や換算はしていません。「入力額の合計」は、両者を単純に足した数字です（税込と税抜が混ざる場合、経理上の合計とは異なります）。振込予定額も、入力額の合計です。実際の振込額（源泉徴収、値引き、振込手数料など）は、請求書で確認してください。<br>入力した内容は、この画面の中だけで計算され、保存も外部への送信もしません（このページは外部と通信しません）。ページを再読み込みすると、入力は消えます。</p>
+</div>
+</main>
+
+<script>
+/* ---- CALC-START（単体テスト・検算スクリプトが、ここから CALC-END までを取り出して実行する） ---- */
+var CATS=['材料費','外注費','交通費','消耗品費','その他'];
+var LIMIT_AMT=1000000000, MAX_ROWS=3000, MAX_PARTY=60, MAX_MEMO=200;
+// 全角→半角（NFKC）、制御文字と不可視文字の除去、前後の空白の除去
+function normText(s){
+  return String(s==null?'':s).normalize('NFKC').replace(/[\u0000-\u001f\u007f​﻿]/g,' ').replace(/[−‐-―]/g,'-').trim();
+}
+function parseAmount(s){
+  var t=normText(s).replace(/^[¥￥]\s*/,'').replace(/\s*円$/,'').trim();
+  if(t==='') return {err:'金額が空欄です'};
+  if(/^[-▲△]/.test(t)) return {err:'金額がマイナスです（マイナスは取り込みません。誤入力でなければ、別途ご自身で調整してください）'};
+  if(/^[1-9]\d{0,2}(,\d{3})+$/.test(t)) t=t.replace(/,/g,'');
+  if(/^\d+\.\d+$/.test(t)) return {err:'金額に小数があります（円単位の整数で入れてください）'};
+  if(!/^\d+$/.test(t)) return {err:'金額の形式が正しくありません（数字だけ、または 1,200 のように3桁区切りで）'};
+  if(t.length>12) return {err:'金額が大きすぎます（'+LIMIT_AMT.toLocaleString('ja-JP')+'円以下）'};
+  var v=parseInt(t,10);
+  if(v===0) return {err:'金額が0円です'};
+  if(v>LIMIT_AMT) return {err:'金額が大きすぎます（'+LIMIT_AMT.toLocaleString('ja-JP')+'円以下）'};
+  return {v:v};
+}
+function pad2(n){return (n<10?'0':'')+n;}
+function parseDate(s){
+  var t=normText(s);
+  if(t==='') return {err:'日付が空欄です'};
+  var m=/^(\d{4})[-\/.年](\d{1,2})[-\/.月](\d{1,2})日?$/.exec(t);
+  if(!m) return {err:'日付の形式が正しくありません（2026-09-05 または 2026/9/5）'};
+  var y=+m[1], mo=+m[2], d=+m[3];
+  if(y<2000||y>2100) return {err:'日付の年が範囲外です（2000〜2100年）'};
+  if(mo<1||mo>12) return {err:'日付の月が正しくありません'};
+  if(d<1||d>new Date(Date.UTC(y,mo,0)).getUTCDate()) return {err:'存在しない日付です'};
+  return {v:y+'-'+pad2(mo)+'-'+pad2(d)};
+}
+function parseCat(s){
+  var t=normText(s);
+  if(t==='') return {err:'区分が空欄です'};
+  if(CATS.indexOf(t)<0) return {err:'区分「'+t+'」は使えません。'+CATS.join('・')+' のいずれかにしてください'};
+  return {v:t};
+}
+function parseTax(s){
+  var t=normText(s);
+  if(t==='') return {err:'税込／税抜が空欄です'};
+  if(/^(税込み?|込|内税)$/.test(t)) return {v:'incl'};
+  if(/^(税抜き?|抜|税別|外税)$/.test(t)) return {v:'excl'};
+  return {err:'税込／税抜「'+t+'」は使えません。「税込」か「税抜」にしてください'};
+}
+function partyKey(s){return normText(s).replace(/\s+/g,'').toLowerCase();}
+// raw = {date,party,cat,amount,tax,memo（すべて文字列）, pre（取り込み時のエラー文、任意）}
+// 戻り値 {blank}（全部空欄の行）または {ok:true,v} または {ok:false,errors}
+function validateRow(raw){
+  var keys=['date','party','cat','amount','tax','memo'], i, allBlank=true;
+  for(i=0;i<keys.length;i++) if(normText(raw[keys[i]])!=='') allBlank=false;
+  if(allBlank&&!raw.pre) return {blank:true};
+  var errors=[]; if(raw.pre) errors.push(raw.pre);
+  var d=parseDate(raw.date), c=parseCat(raw.cat), a=parseAmount(raw.amount), x=parseTax(raw.tax);
+  var party=normText(raw.party), memo=normText(raw.memo);
+  if(d.err) errors.push(d.err);
+  if(party==='') errors.push('相手先が空欄です'); else if(party.length>MAX_PARTY) errors.push('相手先が長すぎます（'+MAX_PARTY+'文字以内）');
+  if(c.err) errors.push(c.err);
+  if(a.err) errors.push(a.err);
+  if(x.err) errors.push(x.err);
+  if(memo.length>MAX_MEMO) errors.push('メモが長すぎます（'+MAX_MEMO+'文字以内）');
+  if(errors.length) return {ok:false,errors:errors};
+  return {ok:true,v:{date:d.v,ym:d.v.slice(0,7),party:party,pkey:partyKey(party),cat:c.v,amount:a.v,tax:x.v,memo:memo}};
+}
+// 行の一覧を検証。n は表の上からの行番号（1始まり）。不正な行は valid に入れない
+function evaluate(rawRows){
+  var valid=[], invalid=[], blank=0;
+  rawRows.forEach(function(r,i){
+    var res=validateRow(r), n=i+1;
+    if(res.blank){blank++;return;}
+    if(res.ok){var v=res.v; v.n=n; valid.push(v);} else invalid.push({n:n,errors:res.errors});
+  });
+  return {valid:valid,invalid:invalid,blank:blank};
+}
+function newSum(){return {incl:0,excl:0,sum:0,n:0};}
+function addTo(s,v){ if(v.tax==='incl') s.incl+=v.amount; else s.excl+=v.amount; s.sum+=v.amount; s.n++; }
+// 月ごとの区分別合計（月は昇順、区分は CATS の順で、件数のあるものだけ）
+function monthCategory(valid){
+  var by={}, months=[];
+  valid.forEach(function(v){
+    if(!by[v.ym]){by[v.ym]={ym:v.ym,byCat:{},total:newSum()}; months.push(v.ym);}
+    var m=by[v.ym]; if(!m.byCat[v.cat]) m.byCat[v.cat]=newSum();
+    addTo(m.byCat[v.cat],v); addTo(m.total,v);
+  });
+  months.sort();
+  return months.map(function(ym){
+    var m=by[ym];
+    return {ym:ym,cats:CATS.filter(function(c){return m.byCat[c];}).map(function(c){var s=m.byCat[c]; return {cat:c,incl:s.incl,excl:s.excl,sum:s.sum,n:s.n};}),total:m.total};
+  });
+}
+// 相手先別の合計。ym・cat は絞り込み（null なら全部）。合計の大きい順、同額は名前の順
+function partyTotals(valid, ym, cat){
+  var by={}, order=[];
+  valid.forEach(function(v){
+    if(ym&&v.ym!==ym) return; if(cat&&v.cat!==cat) return;
+    if(!by[v.pkey]){by[v.pkey]=Object.assign({name:v.party},newSum()); order.push(v.pkey);}
+    addTo(by[v.pkey],v);
+  });
+  return order.map(function(k){return by[k];}).sort(function(a,b){
+    return b.sum-a.sum || (a.name<b.name?-1:a.name>b.name?1:0);
+  });
+}
+function monthsOf(valid){
+  var s={}; valid.forEach(function(v){s[v.ym]=1;}); return Object.keys(s).sort();
+}
+// 重複の候補：相手先・日付・金額が同じ行の組
+function findDuplicates(valid){
+  var by={}, order=[];
+  valid.forEach(function(v){
+    var k=v.pkey+'|'+v.date+'|'+v.amount;
+    if(!by[k]){by[k]={party:v.party,date:v.date,amount:v.amount,rows:[]}; order.push(k);}
+    by[k].rows.push(v.n);
+  });
+  return order.map(function(k){return by[k];}).filter(function(g){return g.rows.length>=2;}).sort(function(a,b){
+    return a.date<b.date?-1:a.date>b.date?1:(a.party<b.party?-1:a.party>b.party?1:a.amount-b.amount);
+  });
+}
+// CSV/TSV。表計算ソフトで数式として実行されないよう、文字列が = + - @ で始まるときは ' を前に付ける
+function cell(x,sep){
+  if(typeof x==='number') return String(x);
+  var s=String(x);
+  if(/^[=+\-@\t\r]/.test(s)) s="'"+s;
+  if(sep==='\t'){ s=s.replace(/[\t\r\n]+/g,' '); return /^"/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+  return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+}
+function toTable(matrix,sep){return matrix.map(function(r){return r.map(function(x){return cell(x,sep);}).join(sep);}).join(sep==='\t'?'\n':'\r\n');}
+var HDR_SUM=['税込で入力した額','税抜で入力した額','入力額の合計','件数'];
+function categoryMatrix(months){
+  var out=[['月','区分'].concat(HDR_SUM)];
+  months.forEach(function(m){
+    m.cats.forEach(function(c){out.push([m.ym,c.cat,c.incl,c.excl,c.sum,c.n]);});
+    out.push([m.ym,'（月の合計）',m.total.incl,m.total.excl,m.total.sum,m.total.n]);
+  });
+  return out;
+}
+function partyMatrix(list,ym,cat){
+  var out=[['対象月','区分','相手先'].concat(HDR_SUM)];
+  list.forEach(function(p){out.push([ym||'全期間',cat||'全区分',p.name,p.incl,p.excl,p.sum,p.n]);});
+  return out;
+}
+// 貼り付けテキスト（タブ区切り＝Excel、またはCSV）を、行の文字列に分ける
+function splitCsvLine(line){
+  var out=[], cur='', q=false, i, ch;
+  for(i=0;i<line.length;i++){
+    ch=line[i];
+    if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+    else if(ch==='"'&&cur==='') q=true;
+    else if(ch===','){out.push(cur);cur='';}
+    else cur+=ch;
+  }
+  out.push(cur); return out;
+}
+function parsePaste(text){
+  var lines=String(text).split(/\r?\n/), tab=String(text).indexOf('\t')>=0, rows=[], first=true, over=false, headerErr=false;
+  lines.forEach(function(line){
+    if(line.trim()==='') return;
+    var c=tab?line.split('\t'):splitCsvLine(line);
+    if(first){first=false; if(normText(c[0])==='日付'){
+      // 見出し行は、列の並びが「日付・相手先・区分・金額」であることを確かめてから読み飛ばす（並びが違えば取り込まない）
+      var h=c.map(normText);
+      if(!((h[1]||'').indexOf('相手')>=0||(h[1]||'').indexOf('取引先')>=0) || (h[2]||'').indexOf('区分')<0 || (h[3]||'').indexOf('金額')<0) headerErr=true;
+      return;
+    }}
+    if(rows.length>=MAX_ROWS){over=true;return;}
+    var r={date:c[0]||'',party:c[1]||'',cat:c[2]||'',amount:c[3]||'',tax:c[4]||'',memo:c[5]||''};
+    if(c.length>6) r.pre='列が多すぎて読み取れません（金額のカンマは、タブ区切りで貼り付けるか、"1,200" のように引用符で囲んでください）。この行は削除して、貼り付け直してください';
+    rows.push(r);
+  });
+  return {rows:rows,over:over,headerErr:headerErr};
+}
+/* ---- CALC-END ---- */
+
+var itemsEl=document.getElementById('items');
+function yen(n){return n.toLocaleString('ja-JP');}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function opts(list,cur){return '<option value="">選択</option>'+list.map(function(x){return '<option value="'+esc(x[0])+'"'+(x[0]===cur?' selected':'')+'>'+esc(x[1])+'</option>';}).join('');}
+function addRow(v){
+  v=v||{};
+  var d=document.createElement('div'); d.className='item';
+  var taxV=/^(税込み?|込|内税)$/.test(normText(v.tax))?'税込':(/^(税抜き?|抜|税別|外税)$/.test(normText(v.tax))?'税抜':'');
+  d.innerHTML='<input class="date" placeholder="2026-09-05" value="'+esc(v.date||'')+'" aria-label="日付">'+
+  '<input class="party" placeholder="相手先" value="'+esc(v.party||'')+'" aria-label="相手先">'+
+  '<select class="cat" aria-label="区分">'+opts(CATS.map(function(c){return [c,c];}),normText(v.cat))+'</select>'+
+  '<input class="amount" inputmode="numeric" placeholder="金額" value="'+esc(v.amount||'')+'" aria-label="金額">'+
+  '<select class="tax" aria-label="税込／税抜">'+opts([['税込','税込'],['税抜','税抜']],taxV)+'</select>'+
+  '<input class="memo" placeholder="メモ" value="'+esc(v.memo||'')+'" aria-label="メモ">'+
+  '<button type="button" class="rm" aria-label="この行を削除">×</button><div class="rerr"></div>';
+  // 取り込めなかった値（区分・税の選択肢に無い文字）は、選択が空になるので、元の文字を残して赤く知らせる
+  d._rawCat=(normText(v.cat)!==''&&d.querySelector('.cat').value==='')?String(v.cat):'';
+  d._rawTax=(normText(v.tax)!==''&&d.querySelector('.tax').value==='')?String(v.tax):'';
+  d._pre=v.pre||'';
+  itemsEl.appendChild(d); return d;
+}
+function readRows(){
+  return Array.prototype.map.call(itemsEl.querySelectorAll('.item'),function(d){
+    var cat=d.querySelector('.cat').value, tax=d.querySelector('.tax').value;
+    return {date:d.querySelector('.date').value,party:d.querySelector('.party').value,
+      cat:cat||d._rawCat, amount:d.querySelector('.amount').value, tax:tax||d._rawTax,
+      memo:d.querySelector('.memo').value, pre:d._pre};
+  });
+}
+function table(head,rows,numFrom){
+  var h='<table><tr>'+head.map(function(x,i){return '<th'+(i>=numFrom?' class="n"':'')+'>'+esc(x)+'</th>';}).join('')+'</tr>';
+  rows.forEach(function(r){h+='<tr'+(r.sub?' class="sub"':'')+'>'+r.cells.map(function(x,i){return '<td'+(i>=numFrom?' class="n"':'')+'>'+(typeof x==='number'?yen(x):esc(x))+'</td>';}).join('')+'</tr>';});
+  return h+'</table>';
+}
+var last={valid:[],ym:''};
+function render(){
+  var rows=readRows(), ev=evaluate(rows), doms=itemsEl.querySelectorAll('.item');
+  var dups=findDuplicates(ev.valid), dupMsg={};
+  dups.forEach(function(g){g.rows.forEach(function(n){dupMsg[n]='重複の候補：行'+g.rows.filter(function(x){return x!==n;}).join('・')+'と、相手先・日付・金額が同じです（集計には含めています）';});});
+  var badMsg={}; ev.invalid.forEach(function(b){badMsg[b.n]=b.errors.join(' ／ ');});
+  doms.forEach(function(d,i){
+    var n=i+1, e=d.querySelector('.rerr');
+    d.classList.toggle('bad',!!badMsg[n]); d.classList.toggle('dup',!badMsg[n]&&!!dupMsg[n]);
+    e.textContent=badMsg[n]?('行'+n+'：'+badMsg[n]+'（この行は集計に含めていません）'):(dupMsg[n]||'');
+  });
+  document.getElementById('stat').innerHTML='集計に使った行：<b>'+ev.valid.length+'</b>行'+
+    (ev.invalid.length?' ／ <b class="ng">誤りのある行：'+ev.invalid.length+'行（赤く表示。集計には含めていません）</b>':'')+
+    (dups.length?' ／ <b class="wn">重複の候補：'+dups.length+'組</b>':'');
+  last.valid=ev.valid;
+  var months=monthsOf(ev.valid), sel=document.getElementById('month'), cur=sel.value;
+  sel.innerHTML=months.map(function(m){return '<option>'+m+'</option>';}).join('');
+  sel.value=months.indexOf(cur)>=0?cur:(months[months.length-1]||'');
+  last.ym=sel.value;
+  var mc=monthCategory(ev.valid), empty='<p class="note">集計できる行がありません。</p>';
+  var trs=[]; mc.forEach(function(m){
+    m.cats.forEach(function(c){trs.push({cells:[m.ym,c.cat,c.incl,c.excl,c.sum,c.n]});});
+    trs.push({sub:1,cells:[m.ym,'月の合計',m.total.incl,m.total.excl,m.total.sum,m.total.n]});
+  });
+  document.getElementById('tMonth').innerHTML=mc.length?table(['月','区分'].concat(HDR_SUM),trs,2):empty;
+  var pt=partyTotals(ev.valid,last.ym,null), pay=partyTotals(ev.valid,last.ym,'外注費');
+  document.getElementById('tParty').innerHTML=pt.length?table(['相手先'].concat(HDR_SUM),pt.map(function(p){return {cells:[p.name,p.incl,p.excl,p.sum,p.n]};}),1):empty;
+  var tot=newSum(); pay.forEach(function(p){tot.incl+=p.incl;tot.excl+=p.excl;tot.sum+=p.sum;tot.n+=p.n;});
+  var payRows=pay.map(function(p){return {cells:[p.name,p.incl,p.excl,p.sum,p.n]};});
+  if(pay.length) payRows.push({sub:1,cells:['合計',tot.incl,tot.excl,tot.sum,tot.n]});
+  document.getElementById('tPay').innerHTML=pay.length?table(['外注先','税込で入力した額','税抜で入力した額','振込予定額（入力額の合計）','件数'],payRows,1):'<p class="note">この月の外注費はありません。</p>';
+  document.getElementById('payWarn').textContent=pay.some(function(p){return p.excl>0;})?'税抜で入力された外注費を含みます。実際の振込額は、消費税を含めた請求書の額で確認してください（このツールは税の計算をしません）。':'';
+  document.getElementById('tDup').innerHTML=dups.length?table(['相手先','日付','金額','該当の行'],dups.map(function(g){return {cells:[g.party,g.date,g.amount,g.rows.map(function(n){return '行'+n;}).join('・')]};}),2):'<p class="note">重複の候補はありません。</p>';
+}
+function setMsg(id,text,ng){var e=document.getElementById(id);e.textContent=text;e.className='msg'+(ng?' ng':'');}
+function download(name,text){
+  var b=new Blob(['﻿'+text],{type:'text/csv;charset=utf-8'}), a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
+}
+function needData(){
+  if(!last.valid.length){setMsg('outMsg','集計できる行がないため、出力できません。',true);return false;}
+  var bad=itemsEl.querySelectorAll('.item.bad').length;
+  if(bad>0 && !window.confirm('誤りのある行が'+bad+'行あります。この行は含めずに出力します（実際より少ない金額になる場合があります）。このまま出力しますか。')){setMsg('outMsg','出力を中止しました。赤い行を直してから、もう一度出力してください。',true);return false;}
+  setMsg('outMsg','',false); return true;
+}
+itemsEl.addEventListener('input',render);
+itemsEl.addEventListener('change',render);
+itemsEl.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.rm'); if(b){b.parentNode.remove();render();}});
+document.getElementById('month').addEventListener('change',render);
+document.getElementById('add').onclick=function(){addRow();render();};
+document.getElementById('clearSample').onclick=function(){
+  if(!window.confirm('表の内容をすべて消して、空の表にします。よろしいですか。')) return;
+  itemsEl.innerHTML=''; for(var i=0;i<3;i++) addRow(); render();
+};
+document.getElementById('pasteGo').onclick=function(){
+  var p=parsePaste(document.getElementById('paste').value);
+  var have=itemsEl.querySelectorAll('.item').length;
+  if(p.headerErr){setMsg('pasteMsg','1行目の見出しの列の並びが、「日付・相手先・区分・金額・税込／税抜・メモ」と違います。列の順を合わせてから貼り付け直してください。何も取り込んでいません。',true);return;}
+  if(!p.rows.length){setMsg('pasteMsg','取り込む行がありません。',true);return;}
+  if(have+p.rows.length>MAX_ROWS||p.over){setMsg('pasteMsg','行数が多すぎます（表全体で'+MAX_ROWS+'行まで）。分けて取り込んでください。何も取り込んでいません。',true);return;}
+  p.rows.forEach(function(r){addRow(r);});
+  render();
+  var bad=itemsEl.querySelectorAll('.item.bad').length;
+  setMsg('pasteMsg',p.rows.length+'行を取り込みました。'+(bad?'誤りのある行が表全体で'+bad+'行あります。赤い行を直すか、削除してください（集計には含めていません）。':'誤りのある行はありません。'),bad>0);
+  document.getElementById('paste').value='';
+};
+function ymNow(){return last.ym;}
+document.getElementById('dlCat').onclick=function(){ if(needData()) download('区分別集計.csv',toTable(categoryMatrix(monthCategory(last.valid)),',')); };
+document.getElementById('dlParty').onclick=function(){ if(needData()) download('相手先別集計_'+ymNow()+'.csv',toTable(partyMatrix(partyTotals(last.valid,ymNow(),null),ymNow(),null),',')); };
+document.getElementById('dlPay').onclick=function(){ if(needData()) download('振込予定額_'+ymNow()+'.csv',toTable(partyMatrix(partyTotals(last.valid,ymNow(),'外注費'),ymNow(),'外注費'),',')); };
+document.getElementById('copyPay').onclick=function(){
+  if(!needData()) return;
+  var t=toTable(partyMatrix(partyTotals(last.valid,ymNow(),'外注費'),ymNow(),'外注費'),'\t');
+  function fb(){var ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();var ok=false;try{ok=document.execCommand('copy');}catch(e){}ta.remove();setMsg('outMsg',ok?'表をコピーしました。Excelなどに貼り付けられます。':'コピーできませんでした。CSVをダウンロードしてください。',!ok);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(function(){setMsg('outMsg','表をコピーしました。Excelなどに貼り付けられます。',false);},fb);}else fb();
+};
+
+// 架空のサンプル（実在の会社・個人とは関係ありません）
+[['2026-08-05','架空タイル工業','外注費','180000','税込','8月分'],
+ ['2026-08-12','サンプル資材店','材料費','64800','税込','タイル接着剤'],
+ ['2026-08-20','見本運送','交通費','3300','税込',''],
+ ['2026-08-28','ダミー職人（見本）','外注費','90000','税抜','8月分（税抜で請求）'],
+ ['2026-09-03','架空タイル工業','外注費','120000','税込','9月上旬'],
+ ['2026-09-03','架空タイル工業','外注費','120000','税込','9月上旬（二重入力かも）'],
+ ['2026-09-05','ダミー職人（見本）','外注費','75000','税抜',''],
+ ['2026-09-09','サンプル資材店','材料費','38500','税込','目地材'],
+ ['2026-09-15','見本文具','消耗品費','2480','税込','軍手・テープ'],
+ ['2026-09-22','見本運送','交通費','5600','税込','']
+].forEach(function(r){addRow({date:r[0],party:r[1],cat:r[2],amount:r[3],tax:r[4],memo:r[5]});});
+render();
+</script>
+</body>
+</html>
